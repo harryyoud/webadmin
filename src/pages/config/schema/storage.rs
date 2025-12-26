@@ -84,6 +84,7 @@ impl Builder<Schemas, ()> {
                 "sqlite",
                 "rocksdb",
                 "elasticsearch",
+                "meilisearch",
                 "sql-read-replica",
             ])
             .input_check([], [Validator::Required])

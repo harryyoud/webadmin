@@ -2,7 +2,16 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [0.1.35] - 2025-12-XX
+## [0.1.36] - 2025-12-26
+
+## Added
+
+### Changed
+
+### Fixed
+- Meilisearch not available for selection as FTS store.
+
+## [0.1.35] - 2025-12-22
 
 ## Added
 
@@ -10,7 +19,6 @@ All notable changes to this project will be documented in this file. This projec
 - Auto-learn spam from spam traps and RBL hits settings.
 
 ### Fixed
-
 
 ## [0.1.34] - 2025-12-16
 
