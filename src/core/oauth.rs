@@ -18,6 +18,10 @@ use super::{
     AccessToken, Permission, Semver, MINIMUM_API_VERSION,
 };
 
+pub const OAUTH_AUTHORIZE_URL: &str = "https://sso.youd.family/application/o/authorize/";
+pub const OAUTH_TOKEN_URL: &str = "https://sso.youd.family/application/o/token/";
+pub const OAUTH_CLIENT_ID: &str = "Snh6rpUfBJV98hjBa82j72atxqCB2j02oaLvwh1T";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +36,12 @@ pub enum OAuthCodeRequest {
     Device {
         code: String,
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum Credentials {
+    UsernamePassword { username: String, password: String },
+    OAuth2 { token: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,10 +72,16 @@ pub enum OAuthResponse {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OAuthGrant {
     pub access_token: String,
+    pub id_token: Option<String>,
     pub token_type: String,
     pub expires_in: u64,
     pub refresh_token: Option<String>,
     pub scope: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OAuthIdToken {
+    pub preferred_username: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,13 +125,11 @@ const REDIRECT_URI: &str = "stalwart://auth";
 
 pub async fn oauth_authenticate(
     base_url: &str,
-    username: &str,
-    password: &str,
+    credentials: &Credentials,
 ) -> AuthenticationResult<AuthenticationResponse> {
     let response = match oauth_user_authentication(
         base_url,
-        username,
-        password,
+        credentials,
         &OAuthCodeRequest::Code {
             client_id: "webadmin".to_string(),
             redirect_uri: REDIRECT_URI.to_string().into(),
@@ -167,12 +181,21 @@ pub async fn oauth_authenticate(
 
 pub async fn oauth_user_authentication(
     base_url: &str,
-    username: &str,
-    password: &str,
+    credentials: &Credentials,
     request: &OAuthCodeRequest,
 ) -> AuthenticationResult<OAuthCodeResponse> {
-    match HttpRequest::post(format!("{base_url}/api/oauth"))
-        .with_basic_authorization(username, password)
+    let mut http_request = HttpRequest::post(format!("{base_url}/api/oauth"));
+
+    match credentials {
+        Credentials::UsernamePassword { username, password } => {
+            http_request = http_request.with_basic_authorization(username, password)
+        }
+        Credentials::OAuth2 { token } => {
+            http_request = http_request.with_header("Authorization", format!("Bearer {token}"))
+        }
+    }
+
+    match http_request
         .with_body(request)
         .unwrap()
         .send::<OAuthCodeResponse>()
@@ -286,6 +309,44 @@ pub async fn oauth_refresh_token(base_url: &str, refresh_token: &str) -> Option<
 
 pub fn use_authorization() -> RwSignal<AccessToken> {
     expect_context::<RwSignal<AccessToken>>()
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ExternOAuthResponse {
+    Granted(ExternOAuthGrant),
+    Error { error: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternOAuthGrant {
+    pub access_token: String,
+    pub token_type: String,
+    pub scope: String,
+    pub expires_in: u64,
+    pub id_token: String,
+}
+
+pub async fn extern_oauth_resolve(code: &str, callback_url: &str) -> ExternOAuthResponse {
+    HttpRequest::post(OAUTH_TOKEN_URL)
+        .with_raw_body(
+            serde_urlencoded::to_string([
+                ("grant_type", "authorization_code"),
+                ("client_id", OAUTH_CLIENT_ID),
+                ("code", &code),
+                ("redirect_uri", callback_url),
+            ])
+            .unwrap(),
+        )
+        .with_header("Content-Type", "application/x-www-form-urlencoded")
+        .send_raw()
+        .await
+        .and_then(|response| {
+            serde_json::from_slice::<ExternOAuthResponse>(response.as_slice()).map_err(Into::into)
+        })
+        .unwrap_or(ExternOAuthResponse::Error {
+            error: "HTTP request failed".into(),
+        })
 }
 
 impl OAuthCodeResponse {

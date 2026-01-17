@@ -21,7 +21,7 @@ use crate::{
     core::{
         oauth::{
             oauth_device_authentication, oauth_user_authentication, AuthenticationResult,
-            OAuthCodeRequest,
+            Credentials, OAuthCodeRequest,
         },
         schema::{Builder, Schemas, Transformer, Type, Validator},
     },
@@ -50,8 +50,11 @@ pub fn Authorize() -> impl IntoView {
             async move {
                 match &request {
                     OAuthCodeRequest::Code { redirect_uri, .. } => {
-                        match oauth_user_authentication(BASE_URL, &username, &password, &request)
-                            .await
+                        match oauth_user_authentication(
+                            BASE_URL,
+                            &Credentials::UsernamePassword { username, password },
+                            &request
+                        ).await
                         {
                             AuthenticationResult::Success(response) => {
                                 let redirect_uri = redirect_uri.as_deref().unwrap_or_default();
